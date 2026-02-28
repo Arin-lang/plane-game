@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sky Ace – 3D Plane Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: Arial, sans-serif; }
+    canvas { display: block; }
+
+    /* ── HUD ── */
+    #hud-top {
+      position: fixed; top: 18px; left: 18px;
+      color: #fff; pointer-events: none;
+    }
+    .hud-box {
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 8px;
+      padding: 7px 14px;
+      margin-bottom: 8px;
+      backdrop-filter: blur(4px);
+    }
+    .hud-label { color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { color: #fff; font-size: 20px; font-weight: bold; }
+
+    #coins-hud {
+      position: fixed; top: 18px; right: 18px;
+      background: rgba(0,0,0,.5);
+      border: 1px solid rgba(255,215,0,.5);
+      border-radius: 8px; padding: 8px 16px;
+      color: #ffd700; font-size: 18px; font-weight: bold;
+      pointer-events: none;
+    }
+
+    #plane-label {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.4); border-radius: 20px;
+      padding: 4px 18px; color: #fff; font-size: 13px;
+      pointer-events: none;
+    }
+
+    #controls-hint {
+      position: fixed; bottom: 18px; right: 18px;
+      background: rgba(0,0,0,.35); border-radius: 8px;
+      padding: 8px 12px; color: rgba(255,255,255,.65);
+      font-size: 12px; line-height: 1.7;
+      pointer-events: none;
+    }
+
+    /* ── SHOP BUTTON ── */
+    #shop-btn {
+      position: fixed; bottom: 18px; left: 18px;
+      background: linear-gradient(135deg,#0d1b2a,#1b2838);
+      border: 1px solid rgba(100,200,255,.5);
+      color: #64c8ff; padding: 10px 22px;
+      border-radius: 8px; cursor: pointer;
+      font-size: 14px; font-weight: bold;
+      transition: all .2s;
+    }
+    #shop-btn:hover { background: rgba(100,200,255,.15); transform: scale(1.05); }
+
+    /* ── SHOP OVERLAY ── */
+    #shop-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.88); z-index: 100;
+      backdrop-filter: blur(7px);
+      flex-direction: column; align-items: center; justify-content: center;
+    }
+    #shop-overlay.open { display: flex; }
+    .shop-title  { color: #64c8ff; font-size: 32px; font-weight: bold; letter-spacing: 2px; margin-bottom: 6px; }
+    .shop-coins  { color: #ffd700; font-size: 16px; margin-bottom: 28px; }
+
+    .planes-grid { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; max-width: 860px; }
+
+    .plane-card {
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 12px; padding: 18px; width: 185px;
+      text-align: center; transition: all .2s; cursor: default;
+    }
+    .plane-card:hover { border-color: #64c8ff; background: rgba(100,200,255,.08); transform: translateY(-3px); }
+    .plane-card.owned  { border-color: #4ade80; }
+    .plane-card.active { border-color: #ffd700; background: rgba(255,215,0,.08); }
+
+    .card-icon  { font-size: 40px; margin-bottom: 8px; }
+    .card-name  { color: #fff; font-size: 15px; font-weight: bold; margin-bottom: 5px; }
+    .card-stats { color: #aaa; font-size: 11px; line-height: 1.9; }
+
+    .card-btn {
+      margin-top: 12px; padding: 7px 0; border-radius: 6px;
+      border: none; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%;
+    }
+    .btn-buy    { background: #ffd700; color: #000; cursor: pointer; }
+    .btn-buy:disabled { background: #555; color: #888; cursor: not-allowed; }
+    .btn-select { background: #4ade80; color: #000; cursor: pointer; }
+    .btn-active { background: #444; color: #999; cursor: default; }
+
+    .shop-close {
+      margin-top: 28px; padding: 10px 30px;
+      background: transparent; border: 1px solid rgba(255,255,255,.3);
+      color: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all .2s;
+    }
+    .shop-close:hover { background: rgba(255,255,255,.1); }
+
+    /* ── TOAST MESSAGE ── */
+    #toast {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      background: rgba(0,0,0,.8); color: #ffd700;
+      padding: 14px 30px; border-radius: 12px;
+      font-size: 20px; font-weight: bold;
+      pointer-events: none; opacity: 0;
+      transition: opacity .35s; z-index: 200;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="hud-top">
+  <div class="hud-box">
+    <div class="hud-label">Speed</div>
+    <div class="hud-value" id="v-speed">0 km/h</div>
+  </div>
+  <div class="hud-box">
+    <div class="hud-label">Altitude</div>
+    <div class="hud-value" id="v-alt">0 m</div>
+  </div>
+  <div class="hud-box">
+    <div class="hud-label">Score</div>
+    <div class="hud-value" id="v-score">0</div>
+  </div>
+</div>
+
+<div id="coins-hud">🪙 <span id="v-coins">0</span></div>
+<div id="plane-label">✈ Biplane</div>
+
+<div id="controls-hint">
+  W / S &nbsp;— Throttle Forward / Back<br>
+  A / D &nbsp;— Yaw Left / Right<br>
+  Q / E &nbsp;— Ascend / Descend<br>
+  [HANGAR] — Buy new planes
+</div>
+
+<!-- Shop -->
+<button id="shop-btn" onclick="openShop()">🏪 HANGAR</button>
+
+<div id="shop-overlay">
+  <div class="shop-title">✈ HANGAR</div>
+  <div class="shop-coins">🪙 <span id="shop-coins-val">0</span> coins</div>
+  <div class="planes-grid" id="planes-grid"></div>
+  <button class="shop-close" onclick="closeShop()">Close &nbsp;[ESC]</button>
+</div>
+
+<div id="toast"></div>
+
+<script type="module">
+'use strict';
+import * as THREE from './three.module.min.js';
+
+// ════════════════════════════════════════════════════
+//  PLANE CATALOGUE
+// ════════════════════════════════════════════════════
+const PLANES = [
+  {
+    id: 'biplane',
+    name: 'Biplane',
+    desc: 'Classic starter plane',
+    icon: '✈',
+    price: 0,
+    maxSpeed: 85,
+    handling: 0.90,
+    bodyColor: 0xE8A020,
+    wingColor: 0xBB7010,
+    stats: { speed: 2, agility: 3, armor: 4 }
+  },
+  {
+    id: 'fighter',
+    name: 'Fighter Jet',
+    desc: 'Fast & agile interceptor',
+    icon: '🛩',
+    price: 400,
+    maxSpeed: 200,
+    handling: 0.85,
+    bodyColor: 0x8899AA,
+    wingColor: 0x556677,
+    stats: { speed: 5, agility: 4, armor: 2 }
+  },
+  {
+    id: 'bomber',
+    name: 'Bomber',
+    desc: 'Heavy-duty wide-body',
+    icon: '💣',
+    price: 300,
+    maxSpeed: 110,
+    handling: 0.60,
+    bodyColor: 0x3355AA,
+    wingColor: 0x223388,
+    stats: { speed: 3, agility: 2, armor: 5 }
+  },
+  {
+    id: 'stealth',
+    name: 'Stealth',
+    desc: 'Sleek next-gen flyer',
+    icon: '🔺',
+    price: 900,
+    maxSpeed: 260,
+    handling: 0.95,
+    bodyColor: 0x111122,
+    wingColor: 0x220033,
+    stats: { speed: 5, agility: 5, armor: 3 }
+  }
+];
+
+// ════════════════════════════════════════════════════
+//  PERSISTENT GAME STATE
+// ════════════════════════════════════════════════════
+let coins = 0, score = 0;
+let ownedPlanes = ['biplane'];
+let currentPlaneId = 'biplane';
+
+(function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem('skyace') || '{}');
+    coins       = s.coins       || 0;
+    score       = s.score       || 0;
+    ownedPlanes = s.owned       || ['biplane'];
+    currentPlaneId = s.current  || 'biplane';
+  } catch (_) {}
+})();
+
+function saveGame() {
+  localStorage.setItem('skyace', JSON.stringify({
+    coins, score,
+    owned: ownedPlanes,
+    current: currentPlaneId
+  }));
+}
+
+// ════════════════════════════════════════════════════
+//  THREE.JS SETUP
+// ════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+document.body.insertBefore(renderer.domElement, document.body.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+scene.fog = new THREE.Fog(0x87CEEB, 350, 1400);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
+camera.position.set(0, 120, 60);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const sun = new THREE.DirectionalLight(0xfff4cc, 1.2);
+sun.position.set(200, 400, 100);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 1600;
+Object.assign(sun.shadow.camera, { left: -600, right: 600, top: 600, bottom: -600 });
+scene.add(sun);
+
+// ════════════════════════════════════════════════════
+//  WORLD – TERRAIN
+// ════════════════════════════════════════════════════
+const terrGeo = new THREE.PlaneGeometry(4000, 4000, 50, 50);
+const terrPos = terrGeo.attributes.position;
+for (let i = 0; i < terrPos.count; i++) {
+  const x = terrPos.getX(i), y = terrPos.getY(i);
+  if (Math.abs(x) < 1900 && Math.abs(y) < 1900) {
+    terrPos.setZ(i,
+      Math.sin(x * 0.014) * Math.cos(y * 0.014) * 28 +
+      Math.sin(x * 0.04 + 0.7) * Math.cos(y * 0.04 + 0.7) * 9
+    );
+  }
+}
+terrGeo.computeVertexNormals();
+const terrain = new THREE.Mesh(terrGeo, new THREE.MeshLambertMaterial({ color: 0x4a8f3f }));
+terrain.rotation.x = -Math.PI / 2;
+terrain.receiveShadow = true;
+scene.add(terrain);
+
+// Grid overlay
+const grid = new THREE.GridHelper(4000, 90, 0x3a7f2f, 0x3a7f2f);
+grid.position.y = 0.6;
+grid.material.opacity = 0.25;
+grid.material.transparent = true;
+scene.add(grid);
+
+// Lakes
+for (let i = 0; i < 6; i++) {
+  const lake = new THREE.Mesh(
+    new THREE.CircleGeometry(70 + Math.random() * 90, 24),
+    new THREE.MeshLambertMaterial({ color: 0x1a6fa0, transparent: true, opacity: 0.85 })
+  );
+  lake.rotation.x = -Math.PI / 2;
+  lake.position.set(rnd(1600), 0.8, rnd(1600));
+  scene.add(lake);
+}
+
+// Mountains
+for (let i = 0; i < 18; i++) {
+  const h = 90 + Math.random() * 170;
+  const m = new THREE.Mesh(
+    new THREE.ConeGeometry(55 + Math.random() * 55, h, 8),
+    new THREE.MeshLambertMaterial({ color: Math.random() > .45 ? 0x6b6b6b : 0x556b2f })
+  );
+  m.position.set(rnd(1900), h / 2, rnd(1900));
+  m.castShadow = true;
+  scene.add(m);
+}
+
+// Trees
+for (let i = 0; i < 240; i++) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.8, 1.1, 8, 6),
+    new THREE.MeshLambertMaterial({ color: 0x5c3317 })
+  );
+  trunk.position.y = 4;
+  g.add(trunk);
+  const crown = new THREE.Mesh(
+    new THREE.ConeGeometry(6, 14, 7),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(0.3 + Math.random() * 0.05, 0.6, 0.28) })
+  );
+  crown.position.y = 15;
+  g.add(crown);
+  g.position.set(rnd(1700), 0, rnd(1700));
+  g.castShadow = true;
+  scene.add(g);
+}
+
+// City buildings
+for (let i = 0; i < 40; i++) {
+  const h = 18 + Math.random() * 70;
+  const b = new THREE.Mesh(
+    new THREE.BoxGeometry(12 + Math.random() * 18, h, 12 + Math.random() * 18),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(0.6, 0.1, 0.3 + Math.random() * 0.25) })
+  );
+  b.position.set(350 + rnd(380), h / 2, rnd(400));
+  b.castShadow = true;
+  scene.add(b);
+}
+
+// ════════════════════════════════════════════════════
+//  CLOUDS
+// ════════════════════════════════════════════════════
+const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.93 });
+const cloudPuffs = [
+  [0, 0, 0, 18], [-22, -4, 5, 13], [22, -4, 0, 14],
+  [-11, 6, -3, 11], [11, 6, 4, 11], [0, -6, -10, 9]
+];
+const clouds = [];
+for (let i = 0; i < 35; i++) {
+  const g = new THREE.Group();
+  cloudPuffs.forEach(([px, py, pz, r]) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), cloudMat);
+    m.position.set(px, py, pz);
+    g.add(m);
+  });
+  g.position.set(rnd(2000), 155 + Math.random() * 220, rnd(2000));
+  g.userData.drift = (Math.random() - .5) * 0.012;
+  clouds.push(g);
+  scene.add(g);
+}
+
+// ════════════════════════════════════════════════════
+//  COINS / RINGS
+// ════════════════════════════════════════════════════
+const coinPool = [];
+const COIN_VALUE = 10;
+
+function spawnCoins(count) {
+  for (let i = 0; i < count; i++) {
+    const m = new THREE.Mesh(
+      new THREE.TorusGeometry(4, 1.1, 10, 20),
+      new THREE.MeshLambertMaterial({ color: 0xffd700, emissive: 0x886600 })
+    );
+    m.position.set(rnd(1300), 50 + Math.random() * 200, rnd(1300));
+    coinPool.push(m);
+    scene.add(m);
+  }
+}
+spawnCoins(45);
+
+// ════════════════════════════════════════════════════
+//  PLANE MODEL BUILDER
+// ════════════════════════════════════════════════════
+function mkMesh(geo, color) {
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color }));
+}
+function mkGlass(color) {
+  return new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.65 });
+}
+
+function buildBiplane(pd) {
+  const g = new THREE.Group();
+  // Fuselage
+  const fuse = mkMesh(new THREE.CylinderGeometry(1.2, 0.5, 14, 8), pd.bodyColor);
+  fuse.rotation.z = Math.PI / 2;
+  g.add(fuse);
+  // Wings (upper + lower)
+  const wingGeo = new THREE.BoxGeometry(22, 0.55, 4.5);
+  const upWing = mkMesh(wingGeo, pd.wingColor); upWing.position.y = 2; g.add(upWing);
+  const loWing = mkMesh(wingGeo.clone(), pd.wingColor); loWing.position.y = -1.5; g.add(loWing);
+  // Struts
+  [-8, 8].forEach(x => {
+    const s = mkMesh(new THREE.BoxGeometry(0.5, 3, 0.5), 0x333333);
+    s.position.set(x, 0.5, 2); g.add(s);
+    const s2 = s.clone(); s2.position.z = -2; g.add(s2);
+  });
+  // Tail horizontal
+  const hTail = mkMesh(new THREE.BoxGeometry(7, 0.45, 2.5), pd.wingColor);
+  hTail.position.set(-6.5, 0.8, 0); g.add(hTail);
+  // Tail vertical
+  const vTail = mkMesh(new THREE.BoxGeometry(0.45, 3.5, 2), pd.bodyColor);
+  vTail.position.set(-6.5, 2.3, 0); g.add(vTail);
+  // Nose / engine cowl
+  const cowl = mkMesh(new THREE.CylinderGeometry(1.4, 1.2, 2, 8), 0x222222);
+  cowl.rotation.z = Math.PI / 2; cowl.position.x = 7.5; g.add(cowl);
+  // Propeller blades
+  const propGroup = new THREE.Group();
+  propGroup.position.x = 8.7;
+  const blade1 = mkMesh(new THREE.BoxGeometry(0.3, 8, 1.2), 0x6B3A2A);
+  propGroup.add(blade1);
+  const blade2 = blade1.clone(); blade2.rotation.x = Math.PI / 2; propGroup.add(blade2);
+  g.add(propGroup);
+  g.userData.propeller = propGroup;
+  // Cockpit
+  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), mkGlass(0x88ccff));
+  cockpit.position.set(2.5, 1.5, 0); g.add(cockpit);
+  // Wheels
+  [-1.5, 1.5].forEach(z => {
+    const axle = mkMesh(new THREE.CylinderGeometry(0.2, 0.2, 3, 6), 0x333333);
+    axle.rotation.z = Math.PI / 2; axle.position.set(2, -3, z); g.add(axle);
+    const wheel = mkMesh(new THREE.CylinderGeometry(1.2, 1.2, 0.8, 12), 0x111111);
+    wheel.rotation.z = Math.PI / 2; wheel.position.set(2, -3, z); g.add(wheel);
+  });
+  return g;
+}
+
+function buildFighter(pd) {
+  const g = new THREE.Group();
+  // Fuselage
+  const fuse = mkMesh(new THREE.CylinderGeometry(0.85, 0.3, 20, 7), pd.bodyColor);
+  fuse.rotation.z = Math.PI / 2; g.add(fuse);
+  // Swept wings
+  const wGeo = new THREE.BoxGeometry(14, 0.4, 3.5);
+  const wL = mkMesh(wGeo, pd.wingColor); wL.position.set(0, -0.8, 7.5); wL.rotation.y = -0.35; g.add(wL);
+  const wR = mkMesh(wGeo.clone(), pd.wingColor); wR.position.set(0, -0.8, -7.5); wR.rotation.y = 0.35; g.add(wR);
+  // Canards (small front wings)
+  const cGeo = new THREE.BoxGeometry(5, 0.3, 1.5);
+  const cL = mkMesh(cGeo, pd.wingColor); cL.position.set(6, -0.4, 2.5); g.add(cL);
+  const cR = mkMesh(cGeo.clone(), pd.wingColor); cR.position.set(6, -0.4, -2.5); g.add(cR);
+  // Twin tail fins
+  [-2, 2].forEach(z => {
+    const fin = mkMesh(new THREE.BoxGeometry(0.4, 4, 2.5), pd.wingColor);
+    fin.position.set(-8.5, 2.5, z); g.add(fin);
+  });
+  // Cockpit
+  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.95, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), mkGlass(0x88ddff));
+  cockpit.position.set(5, 1.1, 0); g.add(cockpit);
+  // Engines (twin)
+  [-2.5, 2.5].forEach(z => {
+    const eng = mkMesh(new THREE.CylinderGeometry(1.1, 0.9, 5, 8), 0x666666);
+    eng.rotation.z = Math.PI / 2; eng.position.set(-3, -1.2, z); g.add(eng);
+    // Exhaust glow
+    const glow = mkMesh(new THREE.CylinderGeometry(0.7, 0.9, 1, 8), 0xFF5500);
+    glow.rotation.z = Math.PI / 2; glow.position.set(-5.8, -1.2, z); g.add(glow);
+  });
+  // Nose cone
+  const nose = mkMesh(new THREE.ConeGeometry(0.85, 4, 7), pd.bodyColor);
+  nose.rotation.z = -Math.PI / 2; nose.position.x = 12; g.add(nose);
+  return g;
+}
+
+function buildBomber(pd) {
+  const g = new THREE.Group();
+  // Wide fuselage
+  const fuse = mkMesh(new THREE.CylinderGeometry(2.2, 1.6, 24, 8), pd.bodyColor);
+  fuse.rotation.z = Math.PI / 2; g.add(fuse);
+  // Long straight wing
+  const wing = mkMesh(new THREE.BoxGeometry(48, 0.65, 7), pd.wingColor);
+  wing.position.y = -0.8; g.add(wing);
+  // 4 engines
+  [-16, -7, 7, 16].forEach(z => {
+    const nacelle = mkMesh(new THREE.CylinderGeometry(1.3, 1.1, 6, 8), 0x444455);
+    nacelle.rotation.z = Math.PI / 2; nacelle.position.set(3, -2, z); g.add(nacelle);
+    const propG = new THREE.Group();
+    propG.position.set(6.5, -2, z);
+    const b1 = mkMesh(new THREE.BoxGeometry(0.25, 6, 0.9), 0x5a3a1a); propG.add(b1);
+    const b2 = b1.clone(); b2.rotation.x = Math.PI / 2; propG.add(b2);
+    const b3 = b1.clone(); b3.rotation.x = Math.PI; propG.add(b3);
+    const b4 = b1.clone(); b4.rotation.x = -Math.PI / 2; propG.add(b4);
+    g.add(propG);
+  });
+  // Tail
+  const hTail = mkMesh(new THREE.BoxGeometry(14, 0.5, 3), pd.wingColor);
+  hTail.position.set(-11, 0.8, 0); g.add(hTail);
+  const vTail = mkMesh(new THREE.BoxGeometry(0.5, 6, 3.5), pd.bodyColor);
+  vTail.position.set(-11, 4, 0); g.add(vTail);
+  // Cockpit nose
+  const cockpit = new THREE.Mesh(
+    new THREE.SphereGeometry(2, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    mkGlass(0x88ccff)
+  );
+  cockpit.position.set(9, 2.2, 0); g.add(cockpit);
+  // Bomb bay doors
+  const bay = mkMesh(new THREE.BoxGeometry(10, 0.3, 4), 0x222244);
+  bay.position.set(-1, -2.2, 0); g.add(bay);
+  return g;
+}
+
+function buildStealth(pd) {
+  const g = new THREE.Group();
+  // Flat fuselage
+  const fuse = mkMesh(new THREE.BoxGeometry(18, 1.2, 5), pd.bodyColor);
+  g.add(fuse);
+  // Flying-wing sections
+  const wInner = mkMesh(new THREE.BoxGeometry(14, 0.6, 8), pd.wingColor);
+  wInner.position.y = -0.3; g.add(wInner);
+  const wOuter = mkMesh(new THREE.BoxGeometry(10, 0.4, 6), pd.wingColor);
+  wOuter.position.set(-3, -0.3, 12); wOuter.rotation.y = -0.3; g.add(wOuter);
+  const wOuter2 = wOuter.clone();
+  wOuter2.position.set(-3, -0.3, -12); wOuter2.rotation.y = 0.3; g.add(wOuter2);
+  // Angled tail fins
+  [-3, 3].forEach((z, i) => {
+    const fin = mkMesh(new THREE.BoxGeometry(0.35, 3.5, 2), 0x330044);
+    fin.position.set(-6, 2.5, z);
+    fin.rotation.z = (i === 0 ? 1 : -1) * 0.3;
+    g.add(fin);
+  });
+  // Cockpit bubble
+  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.9, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), mkGlass(0x2244cc));
+  cockpit.position.set(4, 1, 0); g.add(cockpit);
+  // Exhaust slits
+  [-1, 1].forEach(z => {
+    const ex = mkMesh(new THREE.BoxGeometry(2, 0.5, 0.8), 0xFF4400);
+    ex.position.set(-8, 0, z); g.add(ex);
+  });
+  // Nose point
+  const nose = mkMesh(new THREE.ConeGeometry(0.6, 5, 4), pd.bodyColor);
+  nose.rotation.z = -Math.PI / 2; nose.position.x = 11; g.add(nose);
+  return g;
+}
+
+function buildPlaneModel(pd) {
+  switch (pd.id) {
+    case 'fighter': return buildFighter(pd);
+    case 'bomber':  return buildBomber(pd);
+    case 'stealth': return buildStealth(pd);
+    default:        return buildBiplane(pd);
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  PLAYER PLANE
+// ════════════════════════════════════════════════════
+let planeGroup = null;
+const planeEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+let throttle = 0;
+
+function currentPD() {
+  return PLANES.find(p => p.id === currentPlaneId) || PLANES[0];
+}
+
+function spawnPlayerPlane() {
+  if (planeGroup) scene.remove(planeGroup);
+  planeGroup = buildPlaneModel(currentPD());
+  planeGroup.position.set(0, 110, 0);
+  planeGroup.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = false; } });
+  scene.add(planeGroup);
+  document.getElementById('plane-label').textContent = '✈ ' + currentPD().name;
+}
+
+// ════════════════════════════════════════════════════
+//  INPUT
+// ════════════════════════════════════════════════════
+const keys = Object.create(null);
+let shopOpen = false;
+
+document.addEventListener('keydown', e => {
+  if (shopOpen) { if (e.key === 'Escape') closeShop(); return; }
+  keys[e.key.toLowerCase()] = true;
+});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+// ════════════════════════════════════════════════════
+//  UPDATE LOOP
+// ════════════════════════════════════════════════════
+const clock = new THREE.Timer();
+
+function update(dt) {
+  if (!planeGroup) return;
+  const pd = currentPD();
+  const h = pd.handling;
+
+  // ── Throttle ──
+  if (keys['w']) throttle = Math.min(throttle + dt * 0.75, 1.0);
+  if (keys['s']) throttle = Math.max(throttle - dt * 0.75, -0.15);
+  throttle *= 0.997;  // gentle idle decay
+
+  // ── Yaw (A / D) ──
+  if (keys['a']) planeEuler.y += dt * 1.3 * h;
+  if (keys['d']) planeEuler.y -= dt * 1.3 * h;
+
+  // ── Pitch / Altitude (Q = up, E = down) ──
+  if (keys['q']) planeEuler.x = Math.min(planeEuler.x + dt * 1.1 * h, 0.75);
+  if (keys['e']) planeEuler.x = Math.max(planeEuler.x - dt * 1.1 * h, -0.75);
+  if (!keys['q'] && !keys['e']) planeEuler.x *= 0.94; // self-level pitch
+
+  // ── Bank on yaw ──
+  if (keys['a']) planeEuler.z = Math.min(planeEuler.z + dt * 1.5, 0.45);
+  else if (keys['d']) planeEuler.z = Math.max(planeEuler.z - dt * 1.5, -0.45);
+  else planeEuler.z *= 0.92;
+
+  planeGroup.rotation.copy(planeEuler);
+
+  // ── Movement ──
+  const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(planeEuler.x, planeEuler.y, 0, 'YXZ'));
+  const spd = throttle * (pd.maxSpeed / 100) * 60 * dt;
+  planeGroup.position.addScaledVector(forward, spd);
+
+  // Gravity when slow
+  if (throttle < 0.12) {
+    planeGroup.position.y -= dt * 14 * (0.12 - throttle);
+  }
+
+  // Floor / ceiling
+  if (planeGroup.position.y < 5)   { planeGroup.position.y = 5;   throttle = Math.max(throttle, 0); planeEuler.x = 0; }
+  if (planeGroup.position.y > 650)  planeGroup.position.y = 650;
+
+  // World wrap
+  const WL = 1950;
+  if (planeGroup.position.x >  WL) planeGroup.position.x = -WL;
+  if (planeGroup.position.x < -WL) planeGroup.position.x =  WL;
+  if (planeGroup.position.z >  WL) planeGroup.position.z = -WL;
+  if (planeGroup.position.z < -WL) planeGroup.position.z =  WL;
+
+  // ── Propeller spin ──
+  if (planeGroup.userData.propeller) {
+    planeGroup.userData.propeller.rotation.x += dt * 22 * (0.2 + Math.abs(throttle));
+  }
+
+  // ── Coin collection ──
+  for (let i = coinPool.length - 1; i >= 0; i--) {
+    const c = coinPool[i];
+    c.rotation.y += dt * 1.8;
+    if (planeGroup.position.distanceTo(c.position) < 14) {
+      coins += COIN_VALUE;
+      score  += 10;
+      scene.remove(c);
+      coinPool.splice(i, 1);
+      if (coinPool.length < 15) spawnCoins(25);
+      saveGame();
+    }
+  }
+
+  // ── Clouds drift ──
+  clouds.forEach(cl => {
+    cl.position.x += cl.userData.drift;
+    if (cl.position.x >  1050) cl.position.x = -1050;
+    if (cl.position.x < -1050) cl.position.x =  1050;
+  });
+
+  // ── Camera chase ──
+  const back = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(planeEuler.x * 0.3, planeEuler.y, 0, 'YXZ'));
+  const camTarget = planeGroup.position.clone().addScaledVector(back, 42).add(new THREE.Vector3(0, 14, 0));
+  camera.position.lerp(camTarget, 0.07);
+  camera.lookAt(planeGroup.position.clone().add(new THREE.Vector3(0, 2, 0)));
+
+  // ── HUD ──
+  const kmh = Math.round(Math.abs(throttle) * pd.maxSpeed);
+  const alt  = Math.round(planeGroup.position.y);
+  document.getElementById('v-speed').textContent = kmh + ' km/h';
+  document.getElementById('v-alt').textContent   = alt + ' m';
+  document.getElementById('v-score').textContent = score;
+  document.getElementById('v-coins').textContent = coins;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  clock.update();
+  update(Math.min(clock.getDelta(), 0.05));
+  renderer.render(scene, camera);
+}
+
+// ════════════════════════════════════════════════════
+//  SHOP
+// ════════════════════════════════════════════════════
+function stars(n, max) {
+  return '★'.repeat(n) + '☆'.repeat(max - n);
+}
+
+function buildShopUI() {
+  document.getElementById('shop-coins-val').textContent = coins;
+  const grid = document.getElementById('planes-grid');
+  grid.innerHTML = '';
+
+  PLANES.forEach(pd => {
+    const owned  = ownedPlanes.includes(pd.id);
+    const active = currentPlaneId === pd.id;
+    const card   = document.createElement('div');
+    card.className = 'plane-card' + (active ? ' active' : owned ? ' owned' : '');
+
+    let btnHTML;
+    if (active) {
+      btnHTML = `<button class="card-btn btn-active">✓ Selected</button>`;
+    } else if (owned) {
+      btnHTML = `<button class="card-btn btn-select" onclick="selectPlane('${pd.id}')">Select</button>`;
+    } else {
+      const canAfford = coins >= pd.price;
+      btnHTML = `<button class="card-btn btn-buy" ${canAfford ? '' : 'disabled'} onclick="buyPlane('${pd.id}')">🪙 ${pd.price}</button>`;
+    }
+
+    card.innerHTML = `
+      <div class="card-icon">${pd.icon}</div>
+      <div class="card-name">${pd.name}</div>
+      <div class="card-stats">
+        Speed&nbsp;&nbsp;: ${stars(pd.stats.speed, 5)}<br>
+        Agility: ${stars(pd.stats.agility, 5)}<br>
+        Armor&nbsp;&nbsp;: ${stars(pd.stats.armor, 5)}
+      </div>
+      ${btnHTML}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function openShop() {
+  shopOpen = true;
+  buildShopUI();
+  document.getElementById('shop-overlay').classList.add('open');
+}
+window.openShop = openShop;
+
+function closeShop() {
+  shopOpen = false;
+  document.getElementById('shop-overlay').classList.remove('open');
+}
+window.closeShop = closeShop;
+
+function buyPlane(id) {
+  const pd = PLANES.find(p => p.id === id);
+  if (!pd || ownedPlanes.includes(id) || coins < pd.price) return;
+  coins -= pd.price;
+  ownedPlanes.push(id);
+  saveGame();
+  buildShopUI();
+  toast(`✈ ${pd.name} purchased!`);
+}
+window.buyPlane = buyPlane;
+
+function selectPlane(id) {
+  if (!ownedPlanes.includes(id)) return;
+  currentPlaneId = id;
+  spawnPlayerPlane();
+  saveGame();
+  closeShop();
+  toast(`Now flying: ${currentPD().name}`);
+}
+window.selectPlane = selectPlane;
+
+// ════════════════════════════════════════════════════
+//  TOAST / UTILITIES
+// ════════════════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+function rnd(range) {
+  return (Math.random() - 0.5) * 2 * range;
+}
+
+// ════════════════════════════════════════════════════
+//  RESIZE
+// ════════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ════════════════════════════════════════════════════
+//  START
+// ════════════════════════════════════════════════════
+spawnPlayerPlane();
+animate();
+toast('🛩️  W A S D Q E to fly — collect 🪙 coins!');
+</script>
+</body>
+</html>
